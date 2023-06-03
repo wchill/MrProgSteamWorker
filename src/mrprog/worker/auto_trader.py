@@ -146,62 +146,9 @@ class AutoTrader(Script):
         result = self.root_ncp_node.search(ncp)
         return result
 
-    async def connect_controller(self) -> None:
-        if (
-            image_processing.run_tesseract_line(image_processing.capture(), (1000, 1000), (460, 460))
-            == "Controller Not Connecting"
-        ):
-            logger.debug("Found controller connect screen, connecting")
-            self.controller.press_button(Button.L + Button.R, hold_ms=100, wait_ms=2000)
-            self.controller.press_button(Button.A, hold_ms=100, wait_ms=2000)
-            await self.controller.wait_for_inputs()
-
     async def reload_save(self):
-        # Home screen
-        await self.home(wait_time=1000)
-
-        # Cloud save menu
-        await self.plus(wait_time=1000)
-        await self.a()
-
-        # Select correct profile
-        await self.down()
-        await self.a(wait_time=500)
-
-        # TODO: Wait for "Download Save Data"
-        await self.wait(5000)
-        await self.down()
-        await self.a()
-
-        # TODO: Wait for "Close the software"
-        await self.wait(1000)
-        await self.a(wait_time=5000)
-
-        # Select "download save"
-        await self.up()
-        await self.a()
-
-        # TODO: Wait for "Download complete.
-        await self.wait(20000)
-        await self.home()
-
-        # TODO: Wait for "Select a user."
-        await self.wait(2000)
-        await self.a(wait_time=2000)
-        await self.a()
-
-        # TODO: Wait for "PRESS ANY BUTTON"
-        for _ in range(60):
-            await self.a(wait_time=1000)
-
-        # TODO: Wait for "PRESS + BUTTON"
-        await self.plus(wait_time=500)
-        await self.a(wait_time=5000)
-
-        await self.plus(wait_time=1000)
-        await self.up()
-        await self.up(wait_time=500)
-        await self.a(wait_time=3000)
+        # TODO: Implement
+        pass
 
     async def navigate_to_chip_trade_screen(self) -> bool:
         # navigate to trade screen
@@ -308,7 +255,7 @@ class AutoTrader(Script):
 
             logger.debug("Searching for room code")
             if not await self.wait_for_text(
-                lambda ocr_text: ocr_text.startswith("Room Code: "), (1242, 89), (365, 54), 15
+                lambda ocr_text: ocr_text.startswith("Room Code:"), (1242, 89), (365, 54), 15
             ):
                 room_code_future.cancel()
                 return TradeResponse.CRITICAL_FAILURE, "Unable to retrieve room code."
@@ -349,14 +296,15 @@ class AutoTrader(Script):
                     if text == "1/15":
                         logger.debug("User joined lobby")
                         await self.wait(500)
-                        await self.a(wait_time=1000)
+                        # TODO: check for "Send a trade request to \n username"
+                        await self.a(wait_time=5000)
                         error = image_processing.run_tesseract_line(image_processing.capture(), (660, 440), (620, 50))
                         if error == "The guest has already left.":
                             await self.wait(12000)
                             await self.b(wait_time=1000)
                             await self.a(wait_time=1000)
                             return TradeResponse.CANCELLED, "User left the room, trade cancelled."
-                        await self.a()
+                        await self.a(wait_time=5000)
                         error = image_processing.run_tesseract_line(image_processing.capture(), (660, 440), (620, 50))
                         if error == "The guest has already left.":
                             await self.wait(12000)

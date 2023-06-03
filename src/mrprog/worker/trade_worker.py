@@ -5,8 +5,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import platform
 import signal
+import sys
 from typing import Tuple
 
 import aio_pika
@@ -27,7 +29,7 @@ from mrprog.utils.logging import install_logger
 from mrprog.utils.trade import TradeRequest, TradeResponse
 from nx.automation import image_processing
 from nx.controller import Button, Controller, DPad
-from nx.controller.sinks import SocketSink
+from nx.controller.sinks import WindowsNamedPipeSink
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +54,11 @@ class TradeWorker:
     trader: AutoTrader
     controller: Controller
 
-    def __init__(
-        self, controller_server: Tuple[str, int], host: str, username: str, password: str, system: str, game: int
-    ):
-        # TODO: Handle BN3, Steam
-        self.controller_server = controller_server
+    def __init__(self, host: str, username: str, password: str, system: str, game: int):
         self.system = system
         self.game = game
         self.sink = None
-        self.socket = None
+        self.pipe = None
 
         self._amqp_connection_str = f"amqp://{username}:{password}@{host}/"
         self._mqtt_connection_info = (host, username, password)
@@ -145,15 +143,18 @@ class TradeWorker:
                     ip_address = address.address
                     break
 
+        # TODO: Don't use hardcoded hostname
         await self.mqtt_client.publish(
-            topic=f"worker/{self.worker_id}/hostname", payload=platform.node(), qos=1, retain=True
+            topic=f"worker/{self.worker_id}/hostname", payload="steam-worker-1", qos=1, retain=True
         )
         await self.mqtt_client.publish(topic=f"worker/{self.worker_id}/address", payload=ip_address, qos=1, retain=True)
         await self.mqtt_client.publish(topic=f"worker/{self.worker_id}/system", payload=self.system, qos=1, retain=True)
         await self.mqtt_client.publish(
             topic=f"worker/{self.worker_id}/game", payload=str(self.game), qos=1, retain=True
         )
-        git_versions = await shell.get_git_versions()
+        # TODO: Fix this (asyncio subprocess doesn't work properly on windows)
+        # git_versions = await shell.get_git_versions()
+        git_versions = {}
         await self.mqtt_client.publish(
             topic=f"worker/{self.worker_id}/version", payload=json.dumps(git_versions), qos=1, retain=True
         )
@@ -162,23 +163,11 @@ class TradeWorker:
         await self.handle_mqtt_updates()
 
     async def run(self) -> None:
-        self.sink = SocketSink(self.controller_server[0], self.controller_server[1])
-        self.socket = await self.sink.connect()
-        self.controller = Controller(self.socket)
+        self.sink = WindowsNamedPipeSink()
+        self.pipe = self.sink.connect_to_pipe()
+        self.controller = Controller(self.pipe)
 
         self.trader = AutoTrader(self.controller, self.game)
-
-        # Let the screen pop up if needed
-        self.controller.press_button(Button.Nothing, wait_ms=2000)
-        await self.controller.wait_for_inputs()
-        if (
-            image_processing.run_tesseract_line(image_processing.capture(), (1000, 1000), (460, 460))
-            == "Controller Not Connecting"
-        ):
-            logger.info("Found controller connect screen, connecting")
-            self.controller.press_button(Button.L + Button.R, hold_ms=100, wait_ms=2000)
-            self.controller.press_button(Button.A, hold_ms=100, wait_ms=2000)
-            await self.controller.wait_for_inputs()
 
         while True:
             try:
@@ -355,7 +344,7 @@ async def main():
     args = parser.parse_args()
 
     install_logger(args.host, args.username, args.password)
-    worker = TradeWorker(("127.0.0.1", 3000), args.host, args.username, args.password, args.platform, args.game)
+    worker = TradeWorker(args.host, args.username, args.password, args.platform, args.game)
 
     signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, worker))
     signal.signal(signal.SIGTERM, lambda sig, frame: signal_handler(sig, frame, worker))
@@ -363,4 +352,10 @@ async def main():
 
 
 if __name__ == "__main__":
+    if sys.platform.lower() == "win32" or os.name.lower() == "nt":
+        # only import if platform/os is win32/nt, otherwise "WindowsSelectorEventLoopPolicy" is not present
+        from asyncio import WindowsSelectorEventLoopPolicy, set_event_loop_policy
+
+        # set the event loop
+        set_event_loop_policy(WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
