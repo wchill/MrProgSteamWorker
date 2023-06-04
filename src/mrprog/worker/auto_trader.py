@@ -315,6 +315,7 @@ class AutoTrader(Script):
                         if await self.wait_for_text(
                             lambda ocr_text: ocr_text == "Trade complete!", (815, 440), (310, 55), 20
                         ):
+                            await self.wait(2000)
                             await self.a(wait_time=1000)
                             if await self.wait_for_text(
                                 lambda ocr_text: ocr_text == "NETWORK", (55, 65), (225, 50), 10
@@ -336,6 +337,13 @@ class AutoTrader(Script):
                                 await self.b(wait_time=1000)
                                 await self.a(wait_time=1000)
                                 return TradeResponse.CANCELLED, "User left the room, trade cancelled."
+                            error = image_processing.run_tesseract_line(
+                                image_processing.capture(), (800, 400), (335, 65)
+                            )
+                            if error == "The trade failed.":
+                                await self.wait(1000)
+                                await self.a(wait_time=1000)
+                                return TradeResponse.RETRYING, "The trade failed. Retrying."
                             return TradeResponse.CRITICAL_FAILURE, "Trade failed due to an unexpected state."
 
             await self.b(wait_time=1000)

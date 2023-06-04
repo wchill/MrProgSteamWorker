@@ -323,6 +323,7 @@ class TradeWorker:
                 traceback.print_exc()
                 await self.mqtt_client.publish(topic=f"worker/{self.worker_id}/enabled", payload=0, qos=1, retain=True)
                 await message.nack(requeue=True)
+        await asyncio.sleep(0)
 
 
 def signal_handler(sig, frame, worker: TradeWorker):
